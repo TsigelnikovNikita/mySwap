@@ -68,7 +68,12 @@ contract Exchange {
         require(tokenSold >0, "Exchange: tokenSold too little");
         return getAmount(tokenSold, getReserve(), address(this).balance);
     }
-
+ 
+    /*
+     * @dev swap amount of tokens that greater than or equal to minTokens to the msg.value.
+     *
+     * @param {minTokens} - amount of token (greater than or equal) that we want to get.
+     */
     function ethToTokenSwap(uint minTokens) external payable {
         uint tokenBought = getAmount(
             msg.value,
@@ -76,10 +81,17 @@ contract Exchange {
             getReserve()
         );
 
-        require(minTokens >= tokenBought, "Exchange: not enough ETH");
+        require(tokenBought >= minTokens, "Exchange: not enough ETH");
         token.transfer(msg.sender, tokenBought);
     }
 
+
+    /*
+     * @dev swap amount of ETH that greater than or equal to minEth to the tokenSold value.
+     *
+     * @param {tokenSold} - amount of token that we want to swap on the ETH.
+     * @param {minEth} - amount of ETH (greater than or equal) that we want to get.
+     */
     function tokenToEthSwap(uint tokenSold, uint minEth) external payable {
         uint ethBought = getAmount(
             tokenSold,
@@ -87,7 +99,7 @@ contract Exchange {
             address(this).balance
         );
 
-        require(minEth >= ethBought, "Exchange: not enough ETH");
+        require(ethBought >= minEth, "Exchange: not enough ETH");
         token.transferFrom(msg.sender, address(this), tokenSold);
         payable(msg.sender).transfer(ethBought);
     }

@@ -1,4 +1,5 @@
 const { expect } = require("chai");
+const { BigNumber } = require("ethers");
 const { ethers } = require("hardhat");
 
 const toWei = (value) => ethers.utils.parseEther(value.toString());
@@ -9,23 +10,29 @@ const fromWei = (value) =>
   );
 
 describe("Exchange", () => {
+  let exchangeOwner;
+  let client;
+  let marketMaker;
   let token;
   let exchange;
 
   beforeEach(async () => {
+    [exchangeOwner, client, marketMaker] = await ethers.getSigners();
     const Token = await ethers.getContractFactory("TestToken");
-    token = await Token.deploy("TestToken", "TTN", toWei(2000));
+    token = await Token.deploy("TestToken", "TestToken");
     await token.deployed();
 
-    const Exchange = await ethers.getContractFactory("Exchange");
-    exchange = await Exchange.deploy(token.address);
-    await exchange.deployed();
+    token.connect(marketMaker).mint(toWei(4000));
+    token.connect(client).mint(toWei(4000));
 
+    const Exchange = await ethers.getContractFactory("Exchange");
+    exchange = await Exchange.connect(exchangeOwner).deploy(token.address);
+    await exchange.deployed();
   });
 
   it("addLiquidity", async () => {
-    await token.approve(exchange.address, toWei(2000));
-    await exchange.addLiquidity(toWei(2000), { value: toWei(1000) });
+    await token.connect(marketMaker).approve(exchange.address, toWei(2000));
+    await exchange.connect(marketMaker).addLiquidity(toWei(2000), { value: toWei(1000) });
 
     expect(await ethers.provider.getBalance(exchange.address)).to.equal(toWei(1000));
     expect(await exchange.getReserve()).to.equal(toWei(2000));
@@ -33,8 +40,8 @@ describe("Exchange", () => {
 
   describe("getAmount", () => {
     beforeEach(async () => {
-      await token.approve(exchange.address, toWei(2000));
-      await exchange.addLiquidity(toWei(2000), { value: toWei(1000) });
+      await token.connect(marketMaker).approve(exchange.address, toWei(2000));
+      await exchange.connect(marketMaker).addLiquidity(toWei(2000), { value: toWei(1000) });
     });
 
     it("getTokenAmount", async () => {
@@ -60,4 +67,30 @@ describe("Exchange", () => {
     });
   });
 
+  describe("Swap", () => {
+    beforeEach(async () => {
+      await token.connect(marketMaker).approve(exchange.address, toWei(2000));
+      await exchange.connect(marketMaker).addLiquidity(toWei(2000), { value: toWei(1000) });
+    });
+
+    it("ethToTokenSwap", async () => {
+      const tokensOut = await exchange.getTokenAmount(toWei(500));
+      
+      const tx = await exchange.connect(client).ethToTokenSwap(tokensOut, {value: toWei(500)});
+
+      await expect(() => tx)
+        .to.changeEtherBalances([exchange, client], [toWei(500), BigNumber.from(0).sub(toWei(500))]);
+    });
+
+    it("tokenToEthSwap", async () => {
+      const ethersOut = await exchange.getEthAmount(toWei(1000));
+      
+      await token.connect(client).approve(exchange.address, toWei(1000));
+      const tx = await exchange.connect(client).tokenToEthSwap(toWei(1000), ethersOut);
+
+      await expect(() => tx)
+        .to.changeEtherBalances([exchange, client], [BigNumber.from(0).sub(ethersOut), ethersOut]);
+
+    });
+  });
 });
