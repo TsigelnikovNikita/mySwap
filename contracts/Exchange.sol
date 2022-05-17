@@ -5,13 +5,18 @@ import "hardhat/console.sol";
 import "@openzeppelin/contracts/token/ERC20/IERC20.sol";
 import "@openzeppelin/contracts/token/ERC20/ERC20.sol";
 
+interface IFactory {
+    function getExchange(address token) external view returns(Exchange);
+}
+
 contract Exchange is ERC20 {
     IERC20 public immutable token;
-    uint8 public constant FEE = 1; //1%
+    IFactory public immutable factory;
 
     constructor(address _token) ERC20("mySwap", "LPT") {
         require(_token != address(0), "Exchange: token address can't be zero");
         token = IERC20(_token);
+        factory = IFactory(msg.sender);
     }
 
     function addLiquidity(uint _tokenAmount) external payable {
@@ -96,12 +101,7 @@ contract Exchange is ERC20 {
         return getAmount(tokenSold, getReserve(), address(this).balance);
     }
  
-    /*
-     * @dev swap amount of tokens that greater than or equal to minTokens to the msg.value.
-     *
-     * @param {minTokens} - amount of token (greater than or equal) that we want to get.
-     */
-    function ethToTokenSwap(uint minTokens) external payable {
+    function ethToToken(uint minTokens, address recipient) private {
         uint tokenBought = getAmount(
             msg.value,
             address(this).balance - msg.value,
@@ -109,9 +109,21 @@ contract Exchange is ERC20 {
         );
 
         require(tokenBought >= minTokens, "Exchange: not enough ETH");
-        token.transfer(msg.sender, tokenBought);
+        token.transfer(recipient, tokenBought);
     }
 
+    /*
+     * @dev swap amount of tokens that greater than or equal to minTokens to the msg.value.
+     *
+     * @param {minTokens} - amount of token (greater than or equal) that we want to get.
+     */
+    function ethToTokenSwap(uint minTokens) external payable {
+        ethToToken(minTokens, msg.sender);
+    }
+
+    function ethToTokenTransfer(uint minTokens, address recipient) external payable {
+        ethToToken(minTokens, recipient);
+    }
 
     /*
      * @dev swap amount of ETH that greater than or equal to minEth to the tokenSold value.
@@ -129,5 +141,19 @@ contract Exchange is ERC20 {
         require(ethBought >= minEth, "Exchange: not enough ETH");
         token.transferFrom(msg.sender, address(this), tokenSold);
         payable(msg.sender).transfer(ethBought);
+    }
+
+    function tokenToTokenSwap(uint tokenSold, uint minTokens, address tokenAddr) external payable {
+        Exchange tokenExchange = factory.getExchange(tokenAddr);
+        require(address(tokenExchange) != address(this) && address(tokenExchange) != address(0),
+                    "Exchange: invalid token address");
+
+        uint ethBought = getAmount(
+            tokenSold,
+            getReserve(),
+            address(this).balance
+        );
+        IERC20(tokenAddr).transferFrom(msg.sender, address(this), tokenSold);
+        tokenExchange.ethToTokenTransfer{value: ethBought}(minTokens, msg.sender);
     }
 }
