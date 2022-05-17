@@ -3,17 +3,41 @@ pragma solidity ^0.8.0;
 
 import "hardhat/console.sol";
 import "@openzeppelin/contracts/token/ERC20/IERC20.sol";
+import "@openzeppelin/contracts/token/ERC20/ERC20.sol";
 
-contract Exchange {
+contract Exchange is ERC20 {
     IERC20 public immutable token;
+    uint8 public constant FEE = 1; //1%
 
-    constructor(address _token) {
+    constructor(address _token) ERC20("mySwap", "LPT") {
         require(_token != address(0), "Exchange: token address can't be zero");
         token = IERC20(_token);
     }
 
-    function addLiquidity(uint256 _tokenAmount) external payable {
-        token.transferFrom(msg.sender, address(this), _tokenAmount);
+    function addLiquidity(uint _tokenAmount) external payable {
+        uint tokenReserve = getReserve();
+        uint ethReserve = address(this).balance - msg.value;
+        uint realTokenAmount = _tokenAmount;
+        uint lpTokens = msg.value;
+
+        if (tokenReserve != 0) {
+            realTokenAmount = msg.value * tokenReserve / ethReserve;
+            require(_tokenAmount >= realTokenAmount, "Exchange: insufficient token amount");
+            lpTokens = totalSupply() * msg.value / ethReserve;
+        }
+        _mint(msg.sender, lpTokens);
+        token.transferFrom(msg.sender, address(this), realTokenAmount);
+    }
+
+    function removeLiquidity(uint lpTokensAmount) external {
+        lpTokensAmount = lpTokensAmount == 0 ? balanceOf(msg.sender) : lpTokensAmount;
+        require(lpTokensAmount > 0, "Exchange: invalid amount");
+        uint ethAmount = (lpTokensAmount * address(this).balance) / totalSupply();
+        uint tokenAmount = (lpTokensAmount * getReserve()) / totalSupply();
+
+        _burn(msg.sender, lpTokensAmount);
+        token.transfer(msg.sender, tokenAmount);
+        payable(msg.sender).transfer(ethAmount);
     }
 
     function getReserve() public view returns(uint) {
@@ -40,7 +64,10 @@ contract Exchange {
     {
         require(inputReserve > 0 && outputReserve > 0,
                                             "Exchange: invalid reserves");
-        return (outputReserve * inputAmount) / (inputReserve + inputAmount);
+        uint inputAmountWithFee = inputAmount * 99;
+        uint numerator = outputReserve * inputAmountWithFee;
+        uint denominator = inputReserve * 100 + inputAmountWithFee;
+        return numerator / denominator;
     }
 
     /*
@@ -51,7 +78,7 @@ contract Exchange {
      * NOTE:
      * please check getAmount function.
      */
-    function getTokenAmount(uint ethSold) public view returns(uint) {
+    function getTokenAmount(uint ethSold) external view returns(uint) {
         require(ethSold >0, "Exchange: ethSold too little");
         return getAmount(ethSold, address(this).balance, getReserve());
     }
@@ -64,7 +91,7 @@ contract Exchange {
      * NOTE:
      * please check getAmount function.
      */
-    function getEthAmount(uint tokenSold) public view returns(uint) {
+    function getEthAmount(uint tokenSold) external view returns(uint) {
         require(tokenSold >0, "Exchange: tokenSold too little");
         return getAmount(tokenSold, getReserve(), address(this).balance);
     }
@@ -92,7 +119,7 @@ contract Exchange {
      * @param {tokenSold} - amount of token that we want to swap on the ETH.
      * @param {minEth} - amount of ETH (greater than or equal) that we want to get.
      */
-    function tokenToEthSwap(uint tokenSold, uint minEth) external payable {
+    function tokenToEthSwap(uint tokenSold, uint minEth) external {
         uint ethBought = getAmount(
             tokenSold,
             getReserve(),
