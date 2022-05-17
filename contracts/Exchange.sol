@@ -21,7 +21,7 @@ contract Exchange {
     }
 
     /*
-     * @dev return price of outputReserve for inputReserve.
+     * @dev return amount of outputReserve for inputReserve.
      *
      * @param {inputAmount} - amount of ethers (or tokens) that we want to get
      * @param {inputReserve} - total amount of ethers (or tokens) that we have in the contract
@@ -33,7 +33,7 @@ contract Exchange {
      *      {outputReserver} should be total amount of tokens in the contract
      * and vice versa.
      */
-    function getPrice(uint inputAmount, uint inputReserve, uint outputReserve)
+    function getAmount(uint inputAmount, uint inputReserve, uint outputReserve)
         private
         pure
         returns (uint)
@@ -49,11 +49,11 @@ contract Exchange {
      * @param {ethSold} - amount of ETH that we want to swap to tokens
      *
      * NOTE:
-     * please check getPrice function.
+     * please check getAmount function.
      */
     function getTokenAmount(uint ethSold) public view returns(uint) {
         require(ethSold >0, "Exchange: ethSold too little");
-        return getPrice(ethSold, address(this).balance, getReserve());
+        return getAmount(ethSold, address(this).balance, getReserve());
     }
 
     /*
@@ -62,10 +62,33 @@ contract Exchange {
      * @param {tokenSold} - amount of tokens that we want to swap to ETH
      *
      * NOTE:
-     * please check getPrice function.
+     * please check getAmount function.
      */
     function getEthAmount(uint tokenSold) public view returns(uint) {
         require(tokenSold >0, "Exchange: tokenSold too little");
-        return getPrice(tokenSold, getReserve(), address(this).balance);
+        return getAmount(tokenSold, getReserve(), address(this).balance);
+    }
+
+    function ethToTokenSwap(uint minTokens) external payable {
+        uint tokenBought = getAmount(
+            msg.value,
+            address(this).balance - msg.value,
+            getReserve()
+        );
+
+        require(minTokens >= tokenBought, "Exchange: not enough ETH");
+        token.transfer(msg.sender, tokenBought);
+    }
+
+    function tokenToEthSwap(uint tokenSold, uint minEth) external payable {
+        uint ethBought = getAmount(
+            tokenSold,
+            getReserve(),
+            address(this).balance
+        );
+
+        require(minEth >= ethBought, "Exchange: not enough ETH");
+        token.transferFrom(msg.sender, address(this), tokenSold);
+        payable(msg.sender).transfer(ethBought);
     }
 }
