@@ -46,24 +46,24 @@ describe("Exchange", () => {
 
     it("getTokenAmount", async () => {
       let tokensOut = await exchange.getTokenAmount(toWei(1));
-      expect(fromWei(tokensOut)).to.equal("1.998001998001998001");
-      
+      expect(fromWei(tokensOut)).to.equal("1.978041738678708079");
+
       tokensOut = await exchange.getTokenAmount(toWei(100));
-      expect(fromWei(tokensOut)).to.equal("181.818181818181818181");
-      
+      expect(fromWei(tokensOut)).to.equal("180.1637852593266606");
+
       tokensOut = await exchange.getTokenAmount(toWei(1000));
-      expect(fromWei(tokensOut)).to.equal("1000.0");
+      expect(fromWei(tokensOut)).to.equal("994.974874371859296482");
     });
 
     it("getEthAmount", async () => {
       let etherOut = await exchange.getEthAmount(toWei(2));
-      expect(fromWei(etherOut)).to.equal("0.999000999000999");
+      expect(fromWei(etherOut)).to.equal("0.989020869339354039");
 
       etherOut = await exchange.getEthAmount(toWei(200));
-      expect(fromWei(etherOut)).to.equal("90.90909090909090909");
+      expect(fromWei(etherOut)).to.equal("90.0818926296633303");
 
       etherOut = await exchange.getEthAmount(toWei(2000));
-      expect(fromWei(etherOut)).to.equal("500.0");
+      expect(fromWei(etherOut)).to.equal("497.487437185929648241");
     });
   });
 
@@ -90,7 +90,18 @@ describe("Exchange", () => {
 
       await expect(() => tx)
         .to.changeEtherBalances([exchange, client], [BigNumber.from(0).sub(ethersOut), ethersOut]);
-
     });
+  });
+
+  it("removeLiqudity", async () => {
+    await token.connect(marketMaker).approve(exchange.address, toWei(200));
+    await exchange.connect(marketMaker).addLiquidity(toWei(200), { value: toWei(100) });
+
+    await exchange.connect(client).ethToTokenSwap(toWei(18), {value: toWei(10)});
+
+    const tx = await exchange.connect(marketMaker).removeLiquidity(toWei(100));
+
+    await expect(() => tx)
+      .to.changeEtherBalances([exchange, marketMaker], [toWei(-110), toWei(110)]);
   });
 });
